@@ -1,6 +1,6 @@
 // src/server.ts
 
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import authRoutes from './routes/auth';
@@ -23,20 +23,44 @@ console.log('Environment variables:', {
 });
 
 const app = express();
-const port = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:3001',
+  credentials: true
+}));
+
 app.use(express.json());
+
+// Add logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/schedules', scheduleRoutes);
 
+const port = process.env.PORT || 3000;
+
 sequelize.sync({ alter: true }).then(() => {
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
+    console.log(`CORS is enabled for origin: http://localhost:3001`);
   });
 }).catch((error) => {
   console.error('Unable to sync database:', error);
+});
+
+// Add a catch-all route for unhandled requests
+app.use((req: Request, res: Response) => {
+  console.log(`Unhandled request: ${req.method} ${req.url}`);
+  res.status(404).json({ message: 'Not Found' });
+});
+
+// Global error handler
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ message: 'Internal Server Error' });
 });
 
 export default app;
