@@ -1,14 +1,22 @@
+// src/controllers/InstructorApplicationController.ts
+
 import { Request, Response } from 'express';
-import { Session } from '../models/Schedule';
+import { Schedule } from '../models/Schedule';
 import { InstructorApplication } from '../models/InstructorApplication';
 import { User } from '../models/User';
+import { Op } from 'sequelize';
 
 export class InstructorApplicationController {
   async getAvailableSessions(req: Request, res: Response) {
     try {
-      const sessions = await Session.find({
-        where: { assignedInstructor: null },
-        order: { date: 'ASC' },
+      const sessions = await Schedule.findAll({
+        where: {
+          status: 'open',
+          date: {
+            [Op.gte]: new Date(), // Only future sessions
+          },
+        },
+        order: [['date', 'ASC']],
       });
 
       return res.status(200).json(sessions);
@@ -19,38 +27,41 @@ export class InstructorApplicationController {
   }
 
   async applyForSession(req: Request, res: Response) {
-    const { sessionId } = req.params;
-    const userId = (req.user as any).id;
+    const { scheduleId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
 
     try {
-      const session = await Session.findOne(sessionId);
-      if (!session) {
-        return res.status(404).json({ message: 'Session not found' });
+      const schedule = await Schedule.findByPk(scheduleId);
+      if (!schedule) {
+        return res.status(404).json({ message: 'Schedule not found' });
       }
 
-      if (session.assignedInstructor) {
-        return res.status(400).json({ message: 'This session already has an assigned instructor' });
+      if (schedule.status !== 'open') {
+        return res.status(400).json({ message: 'This schedule is not open for applications' });
       }
 
-      const user = await User.findOne(userId);
+      const user = await User.findByPk(userId);
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
 
       const existingApplication = await InstructorApplication.findOne({
-        where: { session: sessionId, instructor: userId }
+        where: { scheduleId, instructorId: userId }
       });
 
       if (existingApplication) {
-        return res.status(400).json({ message: 'You have already applied for this session' });
+        return res.status(400).json({ message: 'You have already applied for this schedule' });
       }
 
-      const newApplication = new InstructorApplication();
-      newApplication.session = session;
-      newApplication.instructor = user;
-      newApplication.status = 'pending';
-
-      await newApplication.save();
+      const newApplication = await InstructorApplication.create({
+        scheduleId: parseInt(scheduleId),
+        instructorId: parseInt(userId),
+        status: 'pending'
+      });
 
       return res.status(201).json({ message: 'Application submitted successfully', application: newApplication });
     } catch (error) {
@@ -61,16 +72,22 @@ export class InstructorApplicationController {
 
   async cancelApplication(req: Request, res: Response) {
     const { applicationId } = req.params;
-    const userId = (req.user as any).id;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
 
     try {
-      const application = await InstructorApplication.findOne(applicationId, { relations: ['instructor', 'session'] });
+      const application = await InstructorApplication.findByPk(applicationId, {
+        include: [{ model: Schedule, as: 'schedule' }]
+      });
 
       if (!application) {
         return res.status(404).json({ message: 'Application not found' });
       }
 
-      if (application.instructor.id !== userId) {
+      if (application.instructorId !== parseInt(userId)) {
         return res.status(403).json({ message: 'You are not authorized to cancel this application' });
       }
 
@@ -78,7 +95,7 @@ export class InstructorApplicationController {
         return res.status(400).json({ message: 'Only pending applications can be cancelled' });
       }
 
-      await application.remove();
+      await application.destroy();
 
       return res.status(200).json({ message: 'Application cancelled successfully' });
     } catch (error) {
@@ -88,24 +105,28 @@ export class InstructorApplicationController {
   }
 
   async getInstructorApplications(req: Request, res: Response) {
-    const userId = (req.user as any).id;
+    const userId = req.user?.userId;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     try {
-      const [applications, total] = await InstructorApplication.findAndCount({
-        where: { instructor: userId },
-        relations: ['session'],
-        order: { createdAt: 'DESC' },
-        take: limit,
-        skip: (page - 1) * limit
+      const { count, rows } = await InstructorApplication.findAndCountAll({
+        where: { instructorId: userId },
+        include: [{ model: Schedule, as: 'schedule' }],
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset: (page - 1) * limit
       });
 
       return res.status(200).json({
-        applications,
+        applications: rows,
         currentPage: page,
-        totalPages: Math.ceil(total / limit),
-        totalItems: total
+        totalPages: Math.ceil(count / limit),
+        totalItems: count
       });
     } catch (error) {
       console.error('Error in getInstructorApplications:', error);

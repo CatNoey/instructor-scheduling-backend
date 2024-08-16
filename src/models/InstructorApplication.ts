@@ -1,26 +1,26 @@
 // src/models/InstructorApplication.ts
 
-import { Model, DataTypes } from 'sequelize';
-import { sequelize } from '../config/database';
-import { User } from './User';
-import { Session } from './Schedule';
+import { DataTypes, Model, InferAttributes, InferCreationAttributes, CreationOptional } from 'sequelize';
+import sequelize from '../config/database';
 
-export class InstructorApplication extends Model {
-  public id!: number;
-  public status!: 'pending' | 'approved' | 'rejected';
-  public instructorId!: number;
-  public sessionId!: number;
-  public createdAt!: Date;
-  public updatedAt!: Date;
+export interface InstructorApplicationAttributes {
+  id: CreationOptional<number>;
+  status: 'pending' | 'approved' | 'rejected';
+  instructorId: number;
+  scheduleId: number;
+}
 
-  public readonly instructor?: User;
-  public readonly session?: Session;
+class InstructorApplication extends Model<InferAttributes<InstructorApplication>, InferCreationAttributes<InstructorApplication>> implements InstructorApplicationAttributes {
+  declare id: CreationOptional<number>;
+  declare status: 'pending' | 'approved' | 'rejected';
+  declare instructorId: number;
+  declare scheduleId: number;
 }
 
 InstructorApplication.init(
   {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.INTEGER.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
@@ -29,6 +29,14 @@ InstructorApplication.init(
       allowNull: false,
       defaultValue: 'pending',
     },
+    instructorId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+    },
+    scheduleId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+    },
   },
   {
     sequelize,
@@ -36,7 +44,4 @@ InstructorApplication.init(
   }
 );
 
-InstructorApplication.belongsTo(User, { foreignKey: 'instructorId', as: 'instructor' });
-InstructorApplication.belongsTo(Session, { foreignKey: 'sessionId', as: 'session' });
-
-export default InstructorApplication;
+export { InstructorApplication };

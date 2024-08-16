@@ -1,16 +1,30 @@
+// src/routes/instructorApplicationRoutes.ts
+
 import express from 'express';
-import { InstructorApplicationController } from '../controllers/InstructorApplicationController';
-import { authenticateToken } from '../middleware/authMiddleware';
-import { checkRole } from '../middleware/roleMiddleware';
+import { InstructorApplicationController } from '../controllers/instructorApplicationController';
+import { verifyToken } from '../middleware/authMiddleware';
+import { Request, Response, NextFunction } from 'express';
 
 const router = express.Router();
 const controller = new InstructorApplicationController();
 
-router.use(authenticateToken); // Ensure all routes are protected
-router.use(checkRole(['instructor'])); // Ensure only instructors can access these routes
+// Middleware to check if the user is an instructor
+const isInstructor = (req: Request, res: Response, next: NextFunction) => {
+  if (req.user && req.user.role === 'instructor') {
+    next();
+  } else {
+    res.status(403).json({ message: 'Access forbidden. Instructor role required.' });
+  }
+};
+
+// Apply verifyToken middleware to all routes
+router.use(verifyToken);
+
+// Apply isInstructor middleware to all routes
+router.use(isInstructor);
 
 router.get('/available-sessions', controller.getAvailableSessions.bind(controller));
-router.post('/sessions/:sessionId/apply', controller.applyForSession.bind(controller));
+router.post('/sessions/:scheduleId/apply', controller.applyForSession.bind(controller));
 router.delete('/applications/:applicationId', controller.cancelApplication.bind(controller));
 router.get('/applications', controller.getInstructorApplications.bind(controller));
 
